@@ -1,0 +1,8 @@
+# lisp junk
+*.FASL
+*.fasl
+*.lisp-temp
+*.lx??fsl
+
+# system dependent junk
+local/
