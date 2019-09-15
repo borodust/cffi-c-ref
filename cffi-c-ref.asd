@@ -6,3 +6,13 @@
   :version "1.0"
   :depends-on (:alexandria :cffi)
   :components ((:file "cffi-c-ref")))
+
+
+(asdf:defsystem :cffi-c-ref/tests
+  :description "Tests for :cffi-c-ref"
+  :author "Pavel Korolev"
+  :mailto "dev@borodust.org"
+  :license "MIT"
+  :version "1.0"
+  :depends-on (:alexandria :cffi-c-ref :fiveam)
+  :components ((:file "cffi-c-ref-tests")))
