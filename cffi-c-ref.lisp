@@ -97,12 +97,18 @@
 
 (defmacro c-let ((&rest bindings) &body body)
   (with-gensyms (accessors)
-    (multiple-value-bind (macrolets symbol-macrolets allocators deallocators initializers)
+    (multiple-value-bind (macrolets
+                          symbol-macrolets
+                          allocators
+                          deallocators
+                          initializers
+                          dynamic)
         (loop with macrolets
               with symbol-macrolets
               with allocators
               with deallocators
               with initializers
+              with dynamic
               for binding in bindings
               do (destructuring-bind (var type &key from alloc free (count 1) clear)
                      binding
@@ -111,13 +117,17 @@
                    (unless (or alloc from)
                      (error "Neither :alloc nor :from found in ~A" binding))
                    (with-gensyms (ptr)
-                     (when alloc
-                       (push `(,ptr (cffi:foreign-alloc ',type :count ,count))
-                             allocators))
+                     (if (and alloc free)
+                         (push `(,ptr ,type :count ,count)
+                               dynamic)
+                         (progn
+                           (when alloc
+                             (push `(,ptr (cffi:foreign-alloc ',type :count ,count))
+                                   allocators))
+                           (when free
+                             (push `(cffi:foreign-free ,ptr) deallocators))))
                      (when from
                        (push `(,ptr ,from) allocators))
-                     (when free
-                       (push `(cffi:foreign-free ,ptr) deallocators))
                      (when clear
                        (push `(%memset ,ptr 0 ,(* (cffi:foreign-type-size type)
                                                   count))
@@ -131,15 +141,17 @@
                                       symbol-macrolets
                                       allocators
                                       deallocators
-                                      initializers)))
+                                      initializers
+                                      dynamic)))
       `(let ,allocators
-         (macrolet ,macrolets
-           (symbol-macrolet ,symbol-macrolets
-             (unwind-protect
-                  (progn
-                    ,@initializers
-                    ,@body)
-               ,@deallocators)))))))
+         (cffi:with-foreign-objects ,dynamic
+           (macrolet ,macrolets
+             (symbol-macrolet ,symbol-macrolets
+               (unwind-protect
+                    (progn
+                      ,@initializers
+                      ,@body)
+                 ,@deallocators))))))))
 
 
 (defmacro c-with ((&rest bindings) &body body)
