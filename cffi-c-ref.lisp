@@ -7,20 +7,60 @@
 (cl:in-package :cffi-c-ref)
 
 
+(defun symbol-for-anonymous-field-p (slot-name)
+  (getf (symbol-plist slot-name) :cffi-c-ref-anonymous-field-p))
+
+
+(defun extract-slot-names (type)
+  (loop for slot-name in (cffi:foreign-slot-names type)
+        for anonymous-p = (symbol-for-anonymous-field-p slot-name)
+        if anonymous-p
+          append (extract-slot-names
+                  (cffi:foreign-slot-type type slot-name))
+        else
+          collect slot-name))
+
+
+(defun find-slot-type (type name)
+  (loop for slot-name in (cffi:foreign-slot-names type)
+        for slot-type = (cffi:foreign-slot-type type slot-name)
+        for anonymous-p = (symbol-for-anonymous-field-p slot-name)
+          thereis (or (and anonymous-p (find-slot-type slot-type name))
+                      (and (eq name slot-name) slot-type))))
+
+
+(defun find-slot-offset (type name)
+  (labels ((%find-slot-offset (type name offset)
+             (loop for slot-name in (cffi:foreign-slot-names type)
+                   for slot-type = (cffi:foreign-slot-type type slot-name)
+                   for slot-offset = (cffi:foreign-slot-offset type slot-name)
+                   for anonymous-p = (symbol-for-anonymous-field-p slot-name)
+                     thereis (or (and anonymous-p
+                                      (%find-slot-offset slot-type
+                                                         name
+                                                         (+ offset slot-offset)))
+                                 (and (eq name slot-name)
+                                      (+ offset slot-offset))))))
+    (when-let ((offset (%find-slot-offset type name 0)))
+      offset)))
+
+
+(defun find-slot-name (type keyword-name)
+  (let ((slot-names (extract-slot-names type)))
+    (if-let ((slot (find (symbol-name keyword-name)
+                         slot-names
+                         :key #'symbol-name
+                         :test #'string=)))
+      slot
+      (error "Slot with name ~A not found. Available names: ~{~A~^, ~}"
+             keyword-name (mapcar #'symbol-name slot-names)))))
+
+
 (defun %mem-offset (ptr type offset dynamic-offset accessors)
-  (labels ((find-slot-name (keyword-name)
-             (let ((slot-names (cffi:foreign-slot-names type)))
-               (if-let ((slot (find (symbol-name keyword-name)
-                                    slot-names
-                                    :key #'symbol-name
-                                    :test #'string=)))
-                 slot
-                 (error "Slot with name ~A not found. Available names: ~{~A~^, ~}"
-                        keyword-name (mapcar #'symbol-name slot-names)))))
-           (%mem-offset-slot (accessor &optional next-type)
-             (let* ((slot-name (find-slot-name accessor))
-                    (next-type (or next-type (cffi:foreign-slot-type type slot-name)))
-                    (next-offset (cffi:foreign-slot-offset type slot-name)))
+  (labels ((%mem-offset-slot (accessor &optional next-type)
+             (let* ((slot-name (find-slot-name type accessor))
+                    (next-type (or next-type (find-slot-type type slot-name)))
+                    (next-offset (find-slot-offset type slot-name)))
                (%mem-offset ptr next-type
                             (+ offset next-offset)
                             dynamic-offset
@@ -118,8 +158,7 @@
                      (error "Neither :alloc nor :from found in ~A" binding))
                    (with-gensyms (ptr)
                      (if (and alloc free)
-                         (push `(,ptr ,type :count ,count)
-                               dynamic)
+                         (push `(,ptr ',type ,count) dynamic)
                          (progn
                            (when alloc
                              (push `(,ptr (cffi:foreign-alloc ',type :count ,count))

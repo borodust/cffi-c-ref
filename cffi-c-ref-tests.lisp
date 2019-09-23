@@ -24,15 +24,18 @@
   (name :char :count 16))
 
 
-(cffi:defcstruct object
+(cffi:defcstruct %object
   (type type)
   (data :pointer))
 
 
+(cffi:defctype object (:struct %object))
+
+
 (defun create-colored-object (object-color)
-  (let ((object (cffi:foreign-alloc '(:struct object)))
+  (let ((object (cffi:foreign-alloc '(:struct %object)))
         (colored (cffi:foreign-alloc '(:struct colored-object))))
-    (cffi:with-foreign-slots ((type data) object (:struct object))
+    (cffi:with-foreign-slots ((type data) object (:struct %object))
       (setf type :colored
             data colored))
     (cffi:with-foreign-slots ((color) colored (:struct colored-object))
@@ -41,7 +44,7 @@
 
 
 (defun create-named-object (object-name)
-  (c-let ((object (:struct object) :alloc t)
+  (c-let ((object (:struct %object) :alloc t)
           (named (:struct named-object) :alloc t))
     (setf (object :type) :named
           (object :data) (named &))
@@ -53,7 +56,7 @@
 
 
 (defun get-object-detail (object)
-  (c-val ((object (:struct object)))
+  (c-val ((object object))
     (ecase (object :type)
       (:named
        (c-let ((named (:struct named-object) :from (object :data)))
@@ -62,13 +65,13 @@
 
 
 (defun destroy-object (object)
-  (c-val ((object (:struct object)))
+  (c-val ((object (:struct %object)))
     (cffi:foreign-free (object :data))
     (cffi:foreign-free (object &))))
 
 
 (5am:test named-object-indirect-fill
-  (c-with ((obj (:struct object))
+  (c-with ((obj (:struct %object))
            (named (:struct named-object)))
     (setf (obj :data) (named &)
           (obj :type) :named)
