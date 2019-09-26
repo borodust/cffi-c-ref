@@ -104,9 +104,10 @@
                ("*" (destructuring-bind (kind &optional ptr-type &rest rest)
                         (ensure-list type)
                       (declare (ignore rest))
-                      (unless (eq kind :pointer)
+                      (unless (eq (cffi::canonicalize-foreign-type kind) :pointer)
                         (error "Cannot dereference a non-pointer ~A" type))
-                      (when (or (not ptr-type) (eq :void ptr-type))
+                      (when (or (not ptr-type)
+                                (eq :void (cffi::canonicalize-foreign-type ptr-type)))
                         (error "Cannot dereference a void pointer"))
                       (%mem-offset `(cffi:mem-ref ,ptr ',type ,(%expand-offset)) ptr-type
                                    0 nil
