@@ -56,6 +56,23 @@
              keyword-name (mapcar #'symbol-name slot-names)))))
 
 
+(defun find-pointer-or-array-actual-type (type)
+  (let ((unparsed (cffi::unparse-type
+                   (cffi::follow-typedefs
+                    (cffi::parse-type type)))))
+    (if (listp unparsed)
+        (values (second unparsed) (first unparsed))
+        (unless (keywordp unparsed)
+          (find-pointer-or-array-actual-type
+           (cffi::unparse-type
+            (cffi::actual-type
+             (cffi::parse-type unparsed))))))))
+
+
+(defun canonicalize-foreign-type (type)
+  (cffi::canonicalize-foreign-type type))
+
+
 (defun %mem-offset (ptr type offset dynamic-offset accessors)
   (labels ((%mem-offset-slot (accessor &optional next-type)
              (let* ((slot-name (find-slot-name type accessor))
@@ -96,22 +113,24 @@
            (%mem-offset-symbol (accessor)
              (switch (accessor :test #'string=)
                ("&" (when (rest accessors)
-                      (error "& must be the last accessor, but ~A more found"
+                      (error "& must be the last accessor, but more found ~S"
                              (rest accessors)))
                     (if (and (null dynamic-offset) (zerop offset))
                         ptr
                         `(cffi:inc-pointer ,ptr ,(%expand-offset))))
-               ("*" (destructuring-bind (kind &optional ptr-type &rest rest)
-                        (ensure-list type)
-                      (declare (ignore rest))
-                      (unless (eq (cffi::canonicalize-foreign-type kind) :pointer)
-                        (error "Cannot dereference a non-pointer ~A" type))
-                      (when (or (not ptr-type)
-                                (eq :void (cffi::canonicalize-foreign-type ptr-type)))
-                        (error "Cannot dereference a void pointer"))
-                      (%mem-offset `(cffi:mem-ref ,ptr ',type ,(%expand-offset)) ptr-type
-                                   0 nil
-                                   (rest accessors))))
+               ("*" (let ((canonical-type (canonicalize-foreign-type type)))
+                      (unless (eq canonical-type :pointer)
+                        (error "Cannot dereference a non-pointer ~S" type))
+                      (multiple-value-bind (actual-type kind)
+                          (find-pointer-or-array-actual-type type)
+                        (when (or (not actual-type) (eq :void actual-type))
+                          (error "Cannot dereference a void pointer"))
+                        (%mem-offset (if (eq kind :array)
+                                         ptr
+                                         `(cffi:mem-ref ,ptr :pointer ,(%expand-offset)))
+                                     actual-type
+                                     0 nil
+                                     (rest accessors)))))
                (t (%mem-offset-dynamically accessor)))))
     (if accessors
         (let ((accessor (first accessors)))
@@ -169,8 +188,11 @@
                      (when from
                        (push `(,ptr ,from) allocators))
                      (when clear
-                       (push `(%memset ,ptr 0 ,(* (cffi:foreign-type-size type)
-                                                  count))
+                       (push `(%memset ,ptr 0 ,(if (numberp count)
+                                                   (* (cffi:foreign-type-size type)
+                                                      count)
+                                                   `(* ,(cffi:foreign-type-size type)
+                                                       ,count)))
                              initializers))
                      (push `(,var (&rest ,accessors)
                                   `(c-ref ,',ptr ,',type ,@,accessors))
