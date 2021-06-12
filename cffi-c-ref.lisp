@@ -8,7 +8,7 @@
 
 
 (defun symbol-for-anonymous-field-p (slot-name)
-  (getf (symbol-plist slot-name) :cffi-c-ref-anonymous-field-p))
+  (getf (symbol-plist slot-name) :cffi-c-ref-anonymous-field))
 
 
 (defun extract-slot-names (type)
