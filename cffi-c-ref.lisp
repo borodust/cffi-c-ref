@@ -206,14 +206,14 @@
                                       initializers
                                       dynamic)))
       `(let ,allocators
-         (cffi:with-foreign-objects ,dynamic
-           (macrolet ,macrolets
-             (symbol-macrolet ,symbol-macrolets
-               (unwind-protect
-                    (progn
-                      ,@initializers
-                      ,@body)
-                 ,@deallocators))))))))
+         (,@(if dynamic `(cffi:with-foreign-objects ,dynamic) '(progn))
+          (,@(if macrolets `(macrolet ,macrolets) '(progn))
+           (,@(if symbol-macrolets `(symbol-macrolet ,symbol-macrolets) '(progn))
+            (,(if deallocators 'unwind-protect 'progn)
+             (progn
+               ,@initializers
+               ,@body)
+             ,@deallocators))))))))
 
 
 (defmacro c-with ((&rest bindings) &body body)

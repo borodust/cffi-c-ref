@@ -14,5 +14,5 @@
   :mailto "dev@borodust.org"
   :license "MIT"
   :version "1.0"
-  :depends-on (:alexandria :cffi-c-ref :fiveam :bodge-libc-essentials)
+  :depends-on (:alexandria :cffi-c-ref :fiveam)
   :components ((:file "cffi-c-ref-tests")))
